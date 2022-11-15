@@ -40,6 +40,12 @@
 
 #define OUTPUT_CONF 0	// ONNX SSD-Mobilenet has confidence as first, bbox second
 
+// https://github.com/WongKinYiu/yolov7/blob/072f76c72c641c7a1ee482e39f604f6f8ef7ee92/export.py#L136-L139
+#define OUTPUT_NUM_DETS 		0
+#define OUTPUT_DET_BOXES 		1
+#define OUTPUT_DET_SCORES 	2
+#define OUTPUT_DET_CLASSES 	3
+
 #define CHECK_NULL_STR(x)	(x != NULL) ? x : "NULL"
 //#define DEBUG_CLUSTERING
 
@@ -91,15 +97,21 @@ bool detectNet::init( const char* prototxt, const char* model, const char* class
 
 	// create list of output names	
 	std::vector<std::string> output_blobs;
+	
+	if( bbox_blob != NULL )
+		output_blobs.push_back(bbox_blob);
 
 	if( coverage_blob != NULL )
 		output_blobs.push_back(coverage_blob);
 
-	if( bbox_blob != NULL )
-		output_blobs.push_back(bbox_blob);
+	if ( modelTypeFromPath(model) == MODEL_ENGINE ) 
+	{
+		output_blobs.insert(output_blobs.begin(), "num_dets");
+		output_blobs.push_back("det_classes");
+	}
 	
 	// ONNX SSD models require larger workspace size
-	if( modelTypeFromPath(model) == MODEL_ONNX )
+	if( modelTypeFromPath(model) == MODEL_ONNX || modelTypeFromPath(model) == MODEL_ENGINE )
 	{
 		size_t gpuMemFree = 0;
 		size_t gpuMemTotal = 0;
@@ -408,7 +420,13 @@ bool detectNet::allocDetections()
 		mNumClasses = DIMS_H(mOutputs[OUTPUT_CONF].dims);
 		mMaxDetections = DIMS_C(mOutputs[OUTPUT_CONF].dims) /** mNumClasses*/;
 		LogInfo(LOG_TRT "detectNet -- number of object classes: %u\n", mNumClasses);
-	}	
+	}
+	else if( IsModelType(MODEL_ENGINE) )
+	{
+		mNumClasses = 80;
+		mMaxDetections = 100;
+		LogInfo(LOG_TRT "detectNet -- number of object classes: %u\n", mNumClasses);
+	}		
 	else
 	{
 		mNumClasses = DIMS_C(mOutputs[OUTPUT_CVG].dims);
@@ -612,7 +630,7 @@ int detectNet::postProcess( Detection* detections, uint32_t width, uint32_t heig
 	else if( IsModelType(MODEL_CAFFE) )
 		numDetections = postProcessDetectNet(detections, width, height);
 	else if( IsModelType(MODEL_ENGINE) )
-		numDetections = postProcessDetectNet_v2(detections, width, height);
+		numDetections = postProcess_yolov7(detections, width, height);
 	else
 		return -1;
 
@@ -812,6 +830,45 @@ int detectNet::postProcessDetectNet( Detection* detections, uint32_t width, uint
 		}
 	}
 	
+	return numDetections;
+}
+
+int detectNet::postProcess_yolov7( Detection* detections, uint32_t width, uint32_t height )
+{
+	// Output shapes
+	// num_dets 1x1
+	// det_boxes 1x100x4
+	// det_scores 1x100
+	// det_classes 1x100
+
+	int num_dets 		= *(int*) mOutputs[OUTPUT_NUM_DETS].CPU;
+	float* det_boxes 			= mOutputs[OUTPUT_DET_BOXES].CPU;
+	float* det_scores 		= mOutputs[OUTPUT_DET_SCORES].CPU;
+	int* det_classes 	= (int*) mOutputs[OUTPUT_DET_CLASSES].CPU;
+
+	const float scale_x = float(width) / GetInputWidth();
+	const float scale_y = float(height) / GetInputHeight();
+
+	int numDetections = 0;
+
+	for( uint32_t i=0; i < num_dets; i++ )
+	{
+		detections[i].Instance   = i;
+		detections[i].ClassID    = det_classes[i];
+		// There is bug in older version of the efficientNMS TensorRT plugin (<8.2).
+		// When FP16 is used the scores returned are negative. The quick fix is to  
+		// add 1 to the score in order to get close to the original one.
+		// https://github.com/NVIDIA/TensorRT/issues/1758
+		detections[i].Confidence = 1 + det_scores[i];
+
+		detections[i].Left       = det_boxes[i * 4] * scale_x;
+		detections[i].Top        = det_boxes[i * 4 + 1] * scale_y;
+		detections[i].Right      = det_boxes[i * 4 + 2] * scale_x;
+		detections[i].Bottom	   = det_boxes[i * 4 + 3] * scale_y;
+
+		numDetections += clusterDetections(detections, numDetections);
+	}
+
 	return numDetections;
 }
 

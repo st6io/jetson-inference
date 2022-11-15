@@ -520,6 +520,7 @@ protected:
 	int postProcessSSD_ONNX( Detection* detections, uint32_t width, uint32_t height );
 	int postProcessDetectNet( Detection* detections, uint32_t width, uint32_t height );
 	int postProcessDetectNet_v2( Detection* detections, uint32_t width, uint32_t height );
+	int postProcess_yolov7( Detection* detections, uint32_t width, uint32_t height );
 	
 	int clusterDetections( Detection* detections, int n );
 	void sortDetections( Detection* detections, int numDetections );
