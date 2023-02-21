@@ -49,6 +49,8 @@
 #define CHECK_NULL_STR(x)	(x != NULL) ? x : "NULL"
 //#define DEBUG_CLUSTERING
 
+#define MIN(a,b)  (a < b ? a : b)
+
 
 // constructor
 detectNet::detectNet( float meanPixel ) : tensorNet()
@@ -599,13 +601,12 @@ bool detectNet::preProcess( void* input, uint32_t width, uint32_t height, imageF
 	}
 	else if( IsModelType(MODEL_ENGINE) )
 	{
-		// https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/peoplenet
-		if( CUDA_FAILED(cudaTensorNormRGB(input, format, width, height,
+		if( CUDA_FAILED(cudaLetterboxNorm(input, format, width, height, 
 								    mInputs[0].CUDA, GetInputWidth(), GetInputHeight(),
-								    make_float2(0.0f, 1.0f), 
+								    make_float3(0, 0, 0), 
 								    GetStream())) )
 		{
-			LogError(LOG_TRT "detectNet::Detect() -- cudaTensorMeanRGB() failed\n");
+			LogError(LOG_TRT "detectNet::Detect() -- cudaLetterboxNorm() failed\n");
 			return false;
 		}
 	}
@@ -846,8 +847,9 @@ int detectNet::postProcess_yolov7( Detection* detections, uint32_t width, uint32
 	float* det_scores 		= mOutputs[OUTPUT_DET_SCORES].CPU;
 	int* det_classes 	= (int*) mOutputs[OUTPUT_DET_CLASSES].CPU;
 
-	const float scale_x = float(width) / GetInputWidth();
-	const float scale_y = float(height) / GetInputHeight();
+	const float ratio = MIN(float(GetInputWidth()) / float(width), float(GetInputHeight()) / float(height));
+	const int padWidth = (float(GetInputWidth()) - (float(width) * ratio)) / 2.0f;
+	const int padHeight = (float(GetInputHeight()) - (float(height) * ratio)) / 2.0f;
 
 	int numDetections = 0;
 
@@ -861,10 +863,10 @@ int detectNet::postProcess_yolov7( Detection* detections, uint32_t width, uint32
 		// https://github.com/NVIDIA/TensorRT/issues/1758
 		detections[i].Confidence = 1 + det_scores[i];
 
-		detections[i].Left       = det_boxes[i * 4] * scale_x;
-		detections[i].Top        = det_boxes[i * 4 + 1] * scale_y;
-		detections[i].Right      = det_boxes[i * 4 + 2] * scale_x;
-		detections[i].Bottom	   = det_boxes[i * 4 + 3] * scale_y;
+		detections[i].Left       = (det_boxes[i * 4 + 0] - padWidth) / ratio;
+		detections[i].Top        = (det_boxes[i * 4 + 1] - padHeight) / ratio;
+		detections[i].Right      = (det_boxes[i * 4 + 2] - padWidth) / ratio;
+		detections[i].Bottom	   = (det_boxes[i * 4 + 3] - padHeight) / ratio;
 
 		numDetections += clusterDetections(detections, numDetections);
 	}
