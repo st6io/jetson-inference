@@ -612,7 +612,7 @@ bool detectNet::preProcess( void* input, uint32_t width, uint32_t height, imageF
 	{
 		if( CUDA_FAILED(cudaLetterboxNorm(input, format, width, height,
 								    mInputs[0].CUDA, GetInputWidth(), GetInputHeight(),
-								    make_float3(0, 0, 0),
+								    make_float3(114.0f, 114.0f, 114.0f), // use YoloV7 letterboxing color
 								    GetStream())) )
 		{
 			LogError(LOG_TRT "detectNet::Detect() -- cudaLetterboxNorm() failed\n");
