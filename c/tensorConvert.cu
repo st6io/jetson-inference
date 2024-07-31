@@ -23,6 +23,8 @@
 #include "tensorConvert.h"
 
 
+#define MIN(a,b)  (a < b ? a : b)
+
 // gpuTensorMean
 template<typename T, bool isBGR>
 __global__ void gpuTensorMean( float2 scale, T* input, int iWidth, float* output, int oWidth, int oHeight, float3 mean_value )
@@ -256,3 +258,74 @@ cudaError_t cudaTensorNormMeanBGR( void* input, imageFormat format, size_t input
 }
 
 
+template<typename T>
+__global__ void gpuLetterboxNorm( T* input, int inputWidth, float* output, int outputWidth, int outputHeight, 
+																	int padWidth, int padHeight, const float ratio, const float3 color ) 
+{
+	const int x = blockIdx.x * blockDim.x + threadIdx.x;
+	const int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if( x >= outputWidth || y >= outputHeight )
+		return;
+
+	float3 rgb = color;
+
+	if ( (padWidth <= x && x < outputWidth - padWidth) && (padHeight <= y && y < outputHeight - padHeight) )
+	{
+		const int dx = ((float)(x - padWidth) / ratio);
+		const int dy = ((float)(y - padHeight) / ratio);
+
+		const T px = input[ dy * inputWidth + dx ];
+
+		rgb = make_float3(px.x, px.y, px.z);
+	}
+
+	const int n = outputWidth * outputHeight;
+	const int m = y * outputWidth + x;
+
+	output[n * 0 + m] = rgb.x / 255.0f;
+	output[n * 1 + m] = rgb.y / 255.0f;
+	output[n * 2 + m] = rgb.z / 255.0f;
+}
+
+cudaError_t cudaLetterboxNorm( void* input, imageFormat format, size_t inputWidth, size_t inputHeight, 
+															 float* output, size_t outputWidth, size_t outputHeight, const float3& color, 
+															 cudaStream_t stream )
+{
+	if( !input || !output )
+		return cudaErrorInvalidDevicePointer;
+
+	if( inputWidth == 0 || outputWidth == 0 || inputHeight == 0 || outputHeight == 0 )
+		return cudaErrorInvalidValue;
+
+
+	const float ratio = MIN(float(outputWidth) / float(inputWidth), float(outputHeight) / float(inputHeight));
+	if (ratio > 1)
+	{
+		LogError("cudaDrawLetterbox() -- output size is bigger than the input size. Scaling up is not supported");
+		return cudaErrorInvalidValue;
+	}
+
+	const int padWidth = (float(outputWidth) - (float(inputWidth) * ratio)) / 2.0f;
+	const int padHeight = (float(outputHeight) - (float(inputHeight) * ratio)) / 2.0f;
+
+	// launch kernel
+	const dim3 blockDim(8, 8);
+	const dim3 gridDim(iDivUp(outputWidth,blockDim.x), iDivUp(outputHeight,blockDim.y));
+
+	#define LAUNCH_LETTERBOX_NORM(type) \
+		gpuLetterboxNorm<type><<<gridDim, blockDim, 0, stream>>>((type*)input, inputWidth, output, outputWidth, outputHeight, padWidth, padHeight, ratio, color)
+
+	if( format == IMAGE_RGB8 )
+		LAUNCH_LETTERBOX_NORM(uchar3);
+	else if( format == IMAGE_RGBA8 )
+		LAUNCH_LETTERBOX_NORM(uchar4);
+	else if( format == IMAGE_RGB32F )
+		LAUNCH_LETTERBOX_NORM(float3); 
+	else if( format == IMAGE_RGBA32F )
+		LAUNCH_LETTERBOX_NORM(float4);
+	else
+		return cudaErrorInvalidValue;
+
+	return CUDA(cudaGetLastError());
+}

@@ -49,7 +49,17 @@
 #define OUTPUT_DET_CLASSES 	3
 
 #define CHECK_NULL_STR(x)	(x != NULL) ? x : "NULL"
+
 //#define DEBUG_CLUSTERING
+
+#define MIN(a,b)  (a < b ? a : b)
+
+/**
+ * Macro for checking the minimum version of TensorRT that is installed.
+ * This evaluates to true if TensorRT is newer or equal to the provided version.
+ * @ingroup tensorNet
+ */
+#define TENSORRT_VERSION_CHECK(major, minor, patch)  (NV_TENSORRT_MAJOR > major || (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && NV_TENSORRT_PATCH >= patch))
 
 
 // constructor
@@ -600,13 +610,12 @@ bool detectNet::preProcess( void* input, uint32_t width, uint32_t height, imageF
 	}
 	else if( IsModelType(MODEL_ENGINE) )
 	{
-		// https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/peoplenet
-		if( CUDA_FAILED(cudaTensorNormRGB(input, format, width, height,
+		if( CUDA_FAILED(cudaLetterboxNorm(input, format, width, height,
 								    mInputs[0].CUDA, GetInputWidth(), GetInputHeight(),
-								    make_float2(0.0f, 1.0f), 
+								    make_float3(0, 0, 0),
 								    GetStream())) )
 		{
-			LogError(LOG_TRT "detectNet::Detect() -- cudaTensorMeanRGB() failed\n");
+			LogError(LOG_TRT "detectNet::Detect() -- cudaLetterboxNorm() failed\n");
 			return false;
 		}
 	}
@@ -854,25 +863,36 @@ int detectNet::postProcess_yolov7( Detection* detections, uint32_t width, uint32
 	float* det_scores 		= mOutputs[OUTPUT_DET_SCORES].CPU;
 	int* det_classes 	= (int*) mOutputs[OUTPUT_DET_CLASSES].CPU;
 
-	const float scale_x = float(width) / GetInputWidth();
-	const float scale_y = float(height) / GetInputHeight();
+	const float ratio = MIN(float(GetInputWidth()) / float(width), float(GetInputHeight()) / float(height));
+	const int pad_width = (float(GetInputWidth()) - (float(width) * ratio)) / 2.0f;
+	const int pad_height = (float(GetInputHeight()) - (float(height) * ratio)) / 2.0f;
 
 	int numDetections = 0;
+	int confidence_norm = 0;
+
+
+#if !TENSORRT_VERSION_CHECK(8, 2, 1)
+	// There is bug in older version of the efficientNMS TensorRT plugin (<8.2).
+	// When FP16 is used the scores returned are negative. The quick fix is to  
+	// add 1 to the score in order to get close to the original one.
+	// https://github.com/NVIDIA/TensorRT/issues/1758
+	confidence_norm = 1;
+#endif
+
 
 	for( uint32_t i=0; i < num_dets; i++ )
 	{
-		detections[i].Instance   = i;
+		detections[i].TrackID    = -1;
 		detections[i].ClassID    = det_classes[i];
-		// There is bug in older version of the efficientNMS TensorRT plugin (<8.2).
-		// When FP16 is used the scores returned are negative. The quick fix is to  
-		// add 1 to the score in order to get close to the original one.
-		// https://github.com/NVIDIA/TensorRT/issues/1758
-		detections[i].Confidence = 1 + det_scores[i];
+		
 
-		detections[i].Left       = det_boxes[i * 4] * scale_x;
-		detections[i].Top        = det_boxes[i * 4 + 1] * scale_y;
-		detections[i].Right      = det_boxes[i * 4 + 2] * scale_x;
-		detections[i].Bottom	   = det_boxes[i * 4 + 3] * scale_y;
+
+		detections[i].Confidence = confidence_norm + det_scores[i];
+
+		detections[i].Left       = (det_boxes[i * 4] - pad_width) / ratio;
+		detections[i].Top        = (det_boxes[i * 4 + 1] - pad_height) / ratio;
+		detections[i].Right      = (det_boxes[i * 4 + 2] - pad_width) / ratio;
+		detections[i].Bottom	= (det_boxes[i * 4 + 3] - pad_height) / ratio;
 
 		numDetections += clusterDetections(detections, numDetections);
 	}
