@@ -1,7 +1,7 @@
 [submodule "utils"]
 	path = utils
-	url = https://github.com/dusty-nv/jetson-utils
-	branch = master
+	url = https://github.com/st6io/jetson-utils
+	branch = python38-for-ubuntu-bionic
 [submodule "tools/camera-capture"]
 	path = tools/camera-capture
 	url = https://github.com/dusty-nv/camera-capture
@@ -28,3 +28,5 @@
 [submodule "ros"]
 	path = ros
 	url = https://github.com/dusty-nv/ros_deep_learning
+[submodule "./utils/"]
+	url = git@github.com:st6io/jetson-inference.git
