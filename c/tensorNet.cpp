@@ -1637,11 +1637,12 @@ bool tensorNet::LoadEngine( nvinfer1::ICudaEngine* engine,
 
 		LogVerbose(LOG_TRT "binding to output %i %s  binding index:  %i\n", n, output_blobs[n].c_str(), outputIndex);
 
+	#if NV_TENSORRT_MAJOR > 1
     #if NV_TENSORRT_MAJOR >= 10
         nvinfer1::Dims outputDims = engine->getTensorShape(output_blobs[n].c_str());
-	#elif NV_TENSORRT_MAJOR > 1
+    #else  
 		nvinfer1::Dims outputDims = validateDims(engine->getBindingDimensions(outputIndex));
-
+    #endif
 	#if NV_TENSORRT_MAJOR >= 7
 		if( outputDims.nbDims == 2 || outputDims.nbDims == 4)
 			outputDims = shiftDims(outputDims);  // change NCHW to CHW if EXPLICIT_BATCH set. handle custom models with softmax activation in 1 x numClasses format
@@ -1664,7 +1665,7 @@ bool tensorNet::LoadEngine( nvinfer1::ICudaEngine* engine,
 			return false;
 		}
 	
-    #if NV_TENSORRT_MAJOR >= 10
+    #if 0 && NV_TENSORRT_MAJOR >= 10
         if( !mContext->setTensorAddress(output_blobs[n].c_str(), outputCUDA) )
         {
             LogError(LOG_TRT "failed to set input tensor address for %s (%zu bytes)\n", outputSize, output_blobs[n].c_str());
@@ -1865,7 +1866,7 @@ void tensorNet::SetStream( cudaStream_t stream )
 // ProcessNetwork
 bool tensorNet::ProcessNetwork( bool sync )
 {
-	if( TENSORRT_VERSION_CHECK(8,4,1) && mModelType == MODEL_ONNX )
+	if( TENSORRT_VERSION_CHECK(8,4,1) && (mModelType == MODEL_ONNX || mModelType == MODEL_ENGINE)  )
 	{
 	#if TENSORRT_VERSION_CHECK(8,4,1)
 		// on TensorRT 8.4.1 (JetPack 5.0.2 / L4T R35.1.0) and newer, this warning appears:
