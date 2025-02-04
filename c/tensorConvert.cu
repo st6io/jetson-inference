@@ -21,6 +21,7 @@
  */
  
 #include "tensorConvert.h"
+#include <math.h>
 
 
 #define MIN(a,b)  (a < b ? a : b)
@@ -306,8 +307,8 @@ cudaError_t cudaLetterboxNorm( void* input, imageFormat format, size_t inputWidt
 		return cudaErrorInvalidValue;
 	}
 
-	const int padWidth = (float(outputWidth) - (float(inputWidth) * ratio)) / 2.0f;
-	const int padHeight = (float(outputHeight) - (float(inputHeight) * ratio)) / 2.0f;
+	const int padWidth = roundf((float(outputWidth) - (float(inputWidth) * ratio)) / 2.0f);
+	const int padHeight = roundf((float(outputHeight) - (float(inputHeight) * ratio)) / 2.0f);
 
 	// launch kernel
 	const dim3 blockDim(8, 8);
