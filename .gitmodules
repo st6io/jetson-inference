@@ -1,7 +1,7 @@
 [submodule "utils"]
 	path = utils
 	url = https://github.com/st6io/jetson-utils
-	branch = python38-for-ubuntu-bionic
+	branch = nvargus-exposure-compensation
 [submodule "tools/camera-capture"]
 	path = tools/camera-capture
 	url = https://github.com/dusty-nv/camera-capture
