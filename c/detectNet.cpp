@@ -423,9 +423,7 @@ bool detectNet::allocDetections()
 	// determine max detections
 	if( IsModelType(MODEL_ENGINE) )
 	{
-		mNumClasses = 80;
-		mMaxDetections = 100;
-		LogInfo(LOG_TRT "detectNet -- number of object classes: %u\n", mNumClasses);
+		mMaxDetections = DIMS_C(mOutputs[OUTPUT_DET_CLASSES].dims);
 	}
 	else if( IsModelType(MODEL_UFF) )	// TODO:  fixme
 	{
@@ -464,7 +462,7 @@ bool detectNet::loadClassInfo( const char* filename )
 	if( !LoadClassLabels(filename, mClassDesc, mClassSynset, mNumClasses) )
 		return false;
 
-	if( IsModelType(MODEL_UFF) )
+	if( IsModelType(MODEL_UFF) || IsModelType(MODEL_ENGINE) )
 		mNumClasses = mClassDesc.size();
 
 	LogInfo(LOG_TRT "detectNet -- number of object classes:  %u\n", mNumClasses);
