@@ -869,7 +869,7 @@ int detectNet::postProcess_yolov7( Detection* detections, uint32_t width, uint32
 	int confidence_norm = 0;
 
 
-#if !TENSORRT_VERSION_CHECK(8, 2, 1)
+#if !TENSORRT_VERSION_CHECK(8, 2, 2)
 	// There is bug in older version of the efficientNMS TensorRT plugin (<8.2).
 	// When FP16 is used the scores returned are negative. The quick fix is to  
 	// add 1 to the score in order to get close to the original one.
