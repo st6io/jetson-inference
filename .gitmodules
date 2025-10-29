@@ -28,5 +28,3 @@
 [submodule "ros"]
 	path = ros
 	url = https://github.com/dusty-nv/ros_deep_learning
-[submodule "./utils/"]
-	url = git@github.com:st6io/jetson-inference.git
