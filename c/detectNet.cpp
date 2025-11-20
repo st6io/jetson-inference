@@ -51,6 +51,7 @@
 #define CHECK_NULL_STR(x)	(x != NULL) ? x : "NULL"
 
 //#define DEBUG_CLUSTERING
+#define CLUSTER_INTERCLASS 
 
 #define MIN(a,b)  (a < b ? a : b)
 
